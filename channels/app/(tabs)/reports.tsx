@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { Button, TextInput } from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { databases, DATABASE_ID, COLLECTIONS } from '../../config/appwrite';
 import { STYLES, COLORS } from '../../config/styles';
 import { useAuth } from '../../config/useAuth';
 import { Query } from 'appwrite';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+
+import { Alert} from 'react-native';
 
 
 interface ReportEntry {
@@ -16,19 +20,94 @@ interface ReportEntry {
   card: number;
 }
 
+interface ReportDocument {
+  $id: string;
+  date: string;
+  entries: string[]; // JSON strings of ReportEntry
+}
+
 export default function Report() {
   const { signOut } = useAuth();
-
   const [date, setDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [entries, setEntries] = useState<ReportEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState({
+    generate: false,
+    save: false,
+    fetch: false
+  });
+  const [reportsList, setReportsList] = useState<ReportDocument[]>([]);
+  const [expandedReport, setExpandedReport] = useState<string | null>(null);
+  const [pagination, setPagination] = useState({
+    offset: 0,
+    limit: 10,
+    total: 0
+  });
+
+  // Fetch paginated reports list
+  const fetchReportsList = async (offset: number = 0) => {
+    setLoading(prev => ({...prev, fetch: true}));
+    try {
+      const res = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTIONS.REPORTS,
+        [
+          Query.orderDesc('date'),
+          Query.limit(pagination.limit),
+          Query.offset(offset)
+        ]
+      );
+      
+      setReportsList(res.documents as ReportDocument[]);
+      setPagination(prev => ({
+        ...prev,
+        offset,
+        total: res.total
+      }));
+    } catch (error) {
+      console.error('Failed to fetch reports:', error);
+      Alert.alert('Error', 'Failed to load reports list');
+    } finally {
+      setLoading(prev => ({...prev, fetch: false}));
+    }
+  };
+
+  // Load more reports
+  const loadMoreReports = () => {
+    if (pagination.offset + pagination.limit < pagination.total) {
+      fetchReportsList(pagination.offset + pagination.limit);
+    }
+  };
+
+  // Toggle report expansion
+  const toggleReport = (reportId: string) => {
+    setExpandedReport(expandedReport === reportId ? null : reportId);
+  };
+
+  // Parse and display a report's entries
+  const renderReportEntries = (report: ReportDocument) => {
+    const parsedEntries = report.entries.map(entry => JSON.parse(entry) as ReportEntry);
+    
+    return (
+      <View style={{ marginTop: 10, padding: 10, backgroundColor: COLORS.lightGray }}>
+        {parsedEntries.map((entry, idx) => (
+          <View key={`${report.$id}-${entry.staffId}`} style={{ marginBottom: 15 }}>
+            <Text style={{ fontWeight: 'bold' }}>{entry.staffName}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text>APP: {entry.app}</Text>
+              <Text>USSD: {entry.ussd}</Text>
+              <Text>CARD: {entry.card}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  };
 
   // Fetch staff list to create blank report entries
   const fetchStaff = async (): Promise<{ $id: string; name: string }[]> => {
     try {
       const res = await databases.listDocuments(DATABASE_ID, COLLECTIONS.STAFF);
-      // Sort staff alphabetically
       return res.documents.sort((a, b) => a.name.localeCompare(b.name));
     } catch (error) {
       console.error('Failed to fetch staff:', error);
@@ -38,28 +117,27 @@ export default function Report() {
 
   // Generate report for selected date if not exists
   const generateReport = async () => {
-    setLoading(true);
+    setLoading(prev => ({...prev, generate: true}));
     try {
-      const formattedDate = date.toISOString().substring(0, 10); // YYYY-MM-DD
+      const formattedDate = date.toISOString().substring(0, 10);
 
-      // Check if report for this date exists
-     const existingReports = await databases.listDocuments(
+      // Check if report exists
+      const existingReports = await databases.listDocuments(
         DATABASE_ID,
         COLLECTIONS.REPORTS,
         [Query.equal('date', formattedDate)]
       );
 
-
       if (existingReports.total > 0) {
-        alert(`Report for ${formattedDate} already exists.`);
-        // Load existing report entries
-        const parsedEntries = existingReports.documents[0].entries.map((entryStr: string) => JSON.parse(entryStr));
+        const parsedEntries = existingReports.documents[0].entries.map((entryStr: string) => 
+          JSON.parse(entryStr)
+        );
         setEntries(parsedEntries);
-        setLoading(false);
+        Alert.alert('Info', `Report for ${formattedDate} already exists.`);
         return;
       }
 
-      // If not exists, create blank entries for all staff
+      // Create new report
       const staffList = await fetchStaff();
       const blankEntries: ReportEntry[] = staffList.map((staff) => ({
         staffId: staff.$id,
@@ -69,41 +147,31 @@ export default function Report() {
         card: 0,
       }));
 
-      const stringifiedEntries = blankEntries.map((entry) => JSON.stringify(entry));
-
       await databases.createDocument(
         DATABASE_ID,
         COLLECTIONS.REPORTS,
         'unique()',
         {
           date: formattedDate,
-          entries: stringifiedEntries,
+          entries: blankEntries.map(entry => JSON.stringify(entry)),
         }
       );
+      
       setEntries(blankEntries);
+      fetchReportsList(); // Refresh reports list
     } catch (error) {
       console.error('Failed to generate report:', error);
-      alert('Failed to generate report. Check console for details.');
+      Alert.alert('Error', 'Failed to generate report');
+    } finally {
+      setLoading(prev => ({...prev, generate: false}));
     }
-    setLoading(false);
   };
 
-  // Update a single entry value
-  const updateEntry = (index: number, field: keyof Omit<ReportEntry, 'staffId' | 'staffName'>, value: string) => {
-    const intVal = parseInt(value, 10);
-    if (isNaN(intVal) || intVal < 0) return; // Ignore invalid or negative
-
-    const updated = [...entries];
-    updated[index] = { ...updated[index], [field]: intVal };
-    setEntries(updated);
-  };
-
-  // Save edited report back to DB
+  // Save edited report
   const saveReport = async () => {
-    setLoading(true);
+    setLoading(prev => ({...prev, save: true}));
     try {
       const formattedDate = date.toISOString().substring(0, 10);
-      // Find existing report ID
       const existingReports = await databases.listDocuments(
         DATABASE_ID,
         COLLECTIONS.REPORTS,
@@ -111,49 +179,126 @@ export default function Report() {
       );
 
       if (existingReports.total === 0) {
-        alert('No report found for this date to save.');
-        setLoading(false);
+        Alert.alert('Error', 'No report found for this date');
         return;
       }
-      const reportId = existingReports.documents[0].$id;
-
-      // Convert entries objects to JSON strings before saving
-      const stringifiedEntries = entries.map((entry) => JSON.stringify(entry));
 
       await databases.updateDocument(
         DATABASE_ID,
         COLLECTIONS.REPORTS,
-        reportId,
+        existingReports.documents[0].$id,
         {
-          entries: stringifiedEntries,
+          entries: entries.map(entry => JSON.stringify(entry)),
         }
       );
 
-
-      alert('Report saved successfully!');
+      Alert.alert('Success', 'Report saved successfully');
+      fetchReportsList(); // Refresh reports list
     } catch (error) {
       console.error('Failed to save report:', error);
-      alert('Failed to save report. Check console for details.');
+      Alert.alert('Error', 'Failed to save report');
+    } finally {
+      setLoading(prev => ({...prev, save: false}));
     }
-    setLoading(false);
   };
 
-  // Date picker change handler
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowPicker(false);
-    if (selectedDate) {
-      setDate(selectedDate);
-      setEntries([]); // Clear previous entries on new date selection
+  // Initial load
+  useEffect(() => {
+    fetchReportsList();
+  }, []);
+
+  const updateEntry = (index: number, field: keyof ReportEntry, value: string) => {
+    const updated = [...entries];
+    updated[index][field] = parseInt(value || '0', 10);
+    setEntries(updated);
+  };
+
+  // Load report into editing mode
+    const handleEdit = (report: ReportDocument) => {
+      setDate(new Date(report.date));
+      setEntries(report.entries.map(entry => JSON.parse(entry)));
+      setExpandedReport(null);
+      ScrollView?.scrollTo?.({ y: 0, animated: true });
+    };
+
+    // Print logic (you can hook this into PDF or AirPrint later)
+    const handlePrint = async (report: ReportDocument) => {
+      try {
+      const parsedEntries = report.entries.map((e) => JSON.parse(e) as ReportEntry);
+      
+      const htmlContent = `
+        <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              h1 { text-align: center; }
+              .entry { margin-bottom: 20px; }
+              .entry h2 { font-size: 16px; margin-bottom: 5px; }
+              .entry p { margin: 2px 0; }
+            </style>
+          </head>
+          <body>
+            <h1>Report - ${new Date(report.date).toDateString()}</h1>
+            ${parsedEntries
+              .map(
+                (entry) => `
+                  <div class="entry">
+                    <h2>${entry.staffName}</h2>
+                    <p>APP: ${entry.app}</p>
+                    <p>USSD: ${entry.ussd}</p>
+                    <p>CARD: ${entry.card}</p>
+                  </div>
+                `
+              )
+              .join('')}
+          </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+      });
+
+      await Sharing.shareAsync(uri);
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      Alert.alert('Error', 'Failed to generate or share PDF');
     }
   };
+
+    // Delete a report
+    const handleDelete = async (report: ReportDocument) => {
+      Alert.alert(
+        'Confirm Delete',
+        `Are you sure you want to delete the report for ${new Date(report.date).toDateString()}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await databases.deleteDocument(DATABASE_ID, COLLECTIONS.REPORTS, report.$id);
+                Alert.alert('Deleted', 'Report deleted successfully');
+                fetchReportsList(); // refresh
+              } catch (error) {
+                console.error('Delete failed:', error);
+                Alert.alert('Error', 'Failed to delete report');
+              }
+            }
+          }
+        ]
+      );
+    };
+
 
   return (
     <ScrollView contentContainerStyle={STYLES.dashboardContainer}>
-      <Text style={STYLES.title}>Generate Report</Text>
+      <Text style={STYLES.title}>Reports Management</Text>
 
+      {/* Date Selection */}
       <View style={{ marginBottom: 20 }}>
         <Text style={{ marginBottom: 8 }}>Select Date:</Text>
-
         {Platform.OS === 'web' ? (
           <input
             type="date"
@@ -193,20 +338,21 @@ export default function Report() {
         <Button
           mode="contained"
           onPress={generateReport}
-          disabled={loading}
+          loading={loading.generate}
+          disabled={loading.generate}
           style={{ marginTop: 10 }}
         >
           Generate Report
         </Button>
       </View>
 
+      {/* Current Report Editing */}
       {entries.length > 0 && (
         <>
-          <Text style={STYLES.sectionTitle}>Report for {date.toDateString()}</Text>
+          <Text style={STYLES.sectionTitle}>Editing: {date.toDateString()}</Text>
           {entries.map((entry, idx) => (
             <View key={entry.staffId} style={STYLES.staffCard}>
               <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>{entry.staffName}</Text>
-
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 {(['app', 'ussd', 'card'] as const).map((field) => (
                   <View key={field} style={{ flex: 1, marginHorizontal: 5 }}>
@@ -227,18 +373,95 @@ export default function Report() {
           <Button
             mode="contained"
             onPress={saveReport}
-            disabled={loading}
-            style={{ marginTop: 20, marginBottom: 50 }}
+            loading={loading.save}
+            disabled={loading.save}
+            style={{ marginTop: 20 }}
           >
             Save Report
           </Button>
         </>
       )}
 
+      {/* Reports List */}
+      <Text style={[STYLES.sectionTitle, { marginTop: 30 }]}>Existing Reports</Text>
+      
+      {loading.fetch && <ActivityIndicator size="large" color={COLORS.primary} />}
+
+      {reportsList.length === 0 && !loading.fetch && (
+        <Text style={{ textAlign: 'center', marginVertical: 20 }}>No reports found</Text>
+      )}
+
+      {reportsList.map((report) => (
+      <View key={report.$id} style={{ marginBottom: 10 }}>
+        <TouchableOpacity
+          onPress={() => toggleReport(report.$id)}
+          style={{
+            padding: 15,
+            backgroundColor: COLORS.primary,
+            borderRadius: 5,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: 'bold' }}>
+            {new Date(report.date).toDateString()}
+          </Text>
+          <Text style={{ color: 'white' }}>
+            {expandedReport === report.$id ? '▲' : '▼'}
+          </Text>
+        </TouchableOpacity>
+
+        {expandedReport === report.$id && (
+          <View style={{ padding: 10, backgroundColor: COLORS.lightGray }}>
+            {renderReportEntries(report)}
+
+            {/* Buttons */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 15 }}>
+              <Button
+                mode="outlined"
+                onPress={() => handleEdit(report)}
+                style={{ flex: 1, marginRight: 5 }}
+              >
+                Edit
+              </Button>
+              <Button
+                mode="outlined"
+                onPress={() => handlePrint(report)}
+                style={{ flex: 1, marginHorizontal: 5 }}
+              >
+                Print
+              </Button>
+              <Button
+                mode="outlined"
+                onPress={() => handleDelete(report)}
+                style={{ flex: 1, marginLeft: 5 }}
+                textColor={COLORS.error}
+              >
+                Delete
+              </Button>
+            </View>
+          </View>
+        )}
+      </View>
+    ))}
+
+
+      {pagination.offset + pagination.limit < pagination.total && (
+        <Button
+          mode="outlined"
+          onPress={loadMoreReports}
+          style={{ marginTop: 10 }}
+        >
+          Load More
+        </Button>
+      )}
+
+      {/* Logout */}
       <Button
         mode="contained"
         onPress={signOut}
-        style={{ marginTop: 10, backgroundColor: COLORS.error }}
+        style={{ marginTop: 30, backgroundColor: COLORS.error }}
       >
         Logout
       </Button>
