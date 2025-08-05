@@ -8,6 +8,7 @@
     "scheme": "channels",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "platforms": ["ios", "android", "web"],
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
@@ -21,11 +22,13 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.mrsplendid1.channels"
     },
     "web": {
       "bundler": "metro",
       "output": "static",
+      "baseUrl": "/channels/",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [

@@ -86,23 +86,74 @@ export default function Report() {
 
   // Parse and display a report's entries
   const renderReportEntries = (report: ReportDocument) => {
-    const parsedEntries = report.entries.map(entry => JSON.parse(entry) as ReportEntry);
-    
-    return (
-      <View style={{ marginTop: 10, padding: 10, backgroundColor: COLORS.lightGray }}>
-        {parsedEntries.map((entry, idx) => (
-          <View key={`${report.$id}-${entry.staffId}`} style={{ marginBottom: 15 }}>
-            <Text style={{ fontWeight: 'bold' }}>{entry.staffName}</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text>APP: {entry.app}</Text>
-              <Text>USSD: {entry.ussd}</Text>
-              <Text>CARD: {entry.card}</Text>
-            </View>
-          </View>
-        ))}
+  const parsedEntries = report.entries
+    .map(entry => JSON.parse(entry) as ReportEntry)
+    .map(entry => ({
+      ...entry,
+      total: entry.app + entry.ussd + entry.card
+    }))
+    .sort((a, b) => b.total - a.total); // Sort by highest total
+
+  const totalApp = parsedEntries.reduce((sum, e) => sum + e.app, 0);
+  const totalUssd = parsedEntries.reduce((sum, e) => sum + e.ussd, 0);
+  const totalCard = parsedEntries.reduce((sum, e) => sum + e.card, 0);
+  const totalOverall = totalApp + totalUssd + totalCard;
+
+  return (
+    <View style={{ marginTop: 10, padding: 10, backgroundColor: COLORS.lightGray }}>
+      {/* Table Header */}
+      <View style={{
+        flexDirection: 'row',
+        borderBottomWidth: 1,
+        borderColor: COLORS.gray,
+        paddingBottom: 5,
+        marginBottom: 5
+      }}>
+        <Text style={{ flex: 2, fontWeight: 'bold' }}>Name</Text>
+        <Text style={{ flex: 1, textAlign: 'center', fontWeight: 'bold' }}>APP</Text>
+        <Text style={{ flex: 1, textAlign: 'center', fontWeight: 'bold' }}>USSD</Text>
+        <Text style={{ flex: 1, textAlign: 'center', fontWeight: 'bold' }}>CARD</Text>
+        <Text style={{ flex: 1, textAlign: 'center', fontWeight: 'bold' }}>TOTAL</Text>
       </View>
-    );
-  };
+
+      {/* Rows */}
+      {parsedEntries.map((entry) => (
+        <View
+          key={`${report.$id}-${entry.staffId}`}
+          style={{
+            flexDirection: 'row',
+            paddingVertical: 6,
+            borderBottomWidth: 0.5,
+            borderColor: COLORS.gray
+          }}
+        >
+          <Text style={{ flex: 2 }}>{entry.staffName}</Text>
+          <Text style={{ flex: 1, textAlign: 'center' }}>{entry.app}</Text>
+          <Text style={{ flex: 1, textAlign: 'center' }}>{entry.ussd}</Text>
+          <Text style={{ flex: 1, textAlign: 'center' }}>{entry.card}</Text>
+          <Text style={{ flex: 1, textAlign: 'center' }}>{entry.total}</Text>
+        </View>
+      ))}
+
+      {/* Totals Row */}
+      <View
+        style={{
+          flexDirection: 'row',
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderColor: COLORS.primary
+        }}
+      >
+        <Text style={{ flex: 2, fontWeight: 'bold' }}>Total</Text>
+        <Text style={{ flex: 1, textAlign: 'center', fontWeight: 'bold' }}>{totalApp}</Text>
+        <Text style={{ flex: 1, textAlign: 'center', fontWeight: 'bold' }}>{totalUssd}</Text>
+        <Text style={{ flex: 1, textAlign: 'center', fontWeight: 'bold' }}>{totalCard}</Text>
+        <Text style={{ flex: 1, textAlign: 'center', fontWeight: 'bold' }}>{totalOverall}</Text>
+      </View>
+    </View>
+  );
+};
+
 
   // Fetch staff list to create blank report entries
   const fetchStaff = async (): Promise<{ $id: string; name: string }[]> => {
@@ -227,73 +278,138 @@ export default function Report() {
 
     // Print logic (you can hook this into PDF or AirPrint later)
     const handlePrint = async (report: ReportDocument) => {
-      try {
-      const parsedEntries = report.entries.map((e) => JSON.parse(e) as ReportEntry);
-      
-      const htmlContent = `
-        <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              h1 { text-align: center; }
-              .entry { margin-bottom: 20px; }
-              .entry h2 { font-size: 16px; margin-bottom: 5px; }
-              .entry p { margin: 2px 0; }
-            </style>
-          </head>
-          <body>
-            <h1>Report - ${new Date(report.date).toDateString()}</h1>
-            ${parsedEntries
-              .map(
-                (entry) => `
-                  <div class="entry">
-                    <h2>${entry.staffName}</h2>
-                    <p>APP: ${entry.app}</p>
-                    <p>USSD: ${entry.ussd}</p>
-                    <p>CARD: ${entry.card}</p>
-                  </div>
-                `
-              )
-              .join('')}
-          </body>
-        </html>
-      `;
+  try {
+    const parsedEntries = report.entries
+      .map(entry => JSON.parse(entry) as ReportEntry)
+      .map(entry => ({
+        ...entry,
+        total: entry.app + entry.ussd + entry.card
+      }))
+      .sort((a, b) => b.total - a.total);
 
-      const { uri } = await Print.printToFileAsync({
-        html: htmlContent,
-      });
+    const totalApp = parsedEntries.reduce((sum, e) => sum + e.app, 0);
+    const totalUssd = parsedEntries.reduce((sum, e) => sum + e.ussd, 0);
+    const totalCard = parsedEntries.reduce((sum, e) => sum + e.card, 0);
+    const totalOverall = totalApp + totalUssd + totalCard;
 
-      await Sharing.shareAsync(uri);
-    } catch (err) {
-      console.error('PDF generation error:', err);
-      Alert.alert('Error', 'Failed to generate or share PDF');
-    }
-  };
+    const formattedDate = new Date(report.date).toDateString();
+
+    const htmlContent = `
+      <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { text-align: center; margin-bottom: 20px; }
+            .report-container { width: 100%; max-width: 800px; margin: 0 auto; }
+            .table { width: 100%; border-collapse: collapse; }
+            .table th, .table td { padding: 8px; text-align: left; border: 1px solid #ddd; }
+            .table th { background-color: #f2f2f2; font-weight: bold; }
+            .table tr:nth-child(even) { background-color: #f9f9f9; }
+            .total-row { font-weight: bold; background-color: #e6f7ff !important; }
+            .text-center { text-align: center !important; }
+          </style>
+        </head>
+        <body>
+          <div class="report-container">
+            <h1>Channels Report for ${formattedDate}</h1>
+            
+            <table class="table">
+              <thead>
+                <tr>
+                  <th style="width: 40%">Name</th>
+                  <th class="text-center">APP</th>
+                  <th class="text-center">USSD</th>
+                  <th class="text-center">CARD</th>
+                  <th class="text-center">TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${parsedEntries.map((entry) => `
+                  <tr>
+                    <td>${entry.staffName}</td>
+                    <td class="text-center">${entry.app}</td>
+                    <td class="text-center">${entry.ussd}</td>
+                    <td class="text-center">${entry.card}</td>
+                    <td class="text-center">${entry.total}</td>
+                  </tr>
+                `).join('')}
+                <tr class="total-row">
+                  <td>Total</td>
+                  <td class="text-center">${totalApp}</td>
+                  <td class="text-center">${totalUssd}</td>
+                  <td class="text-center">${totalCard}</td>
+                  <td class="text-center">${totalOverall}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const { uri } = await Print.printToFileAsync({
+      html: htmlContent,
+    });
+
+    await Sharing.shareAsync(uri);
+  } catch (err) {
+    console.error('PDF generation error:', err);
+    Alert.alert('Error', 'Failed to generate or share PDF');
+  }
+};
 
     // Delete a report
-    const handleDelete = async (report: ReportDocument) => {
-      Alert.alert(
-        'Confirm Delete',
-        `Are you sure you want to delete the report for ${new Date(report.date).toDateString()}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await databases.deleteDocument(DATABASE_ID, COLLECTIONS.REPORTS, report.$id);
-                Alert.alert('Deleted', 'Report deleted successfully');
-                fetchReportsList(); // refresh
-              } catch (error) {
-                console.error('Delete failed:', error);
-                Alert.alert('Error', 'Failed to delete report');
-              }
-            }
-          }
-        ]
-      );
-    };
+   const handleDelete = async (report: ReportDocument) => {
+  const message = `Are you sure you want to delete the report for ${new Date(report.date).toDateString()}?`;
+  
+  // Platform check
+  if (Platform.OS !== 'web') {
+    // Mobile (React Native) version
+    Alert.alert(
+      'Confirm Delete',
+      message,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => await executeDelete(report)
+        }
+      ]
+    );
+  } else {
+    // Web version
+    const confirmed = window.confirm(`Confirm Delete\n${message}`);
+    if (confirmed) {
+      await executeDelete(report);
+    }
+  }
+};
+
+// Extracted delete logic for reusability
+const executeDelete = async (report: ReportDocument) => {
+  try {
+    await databases.deleteDocument(DATABASE_ID, COLLECTIONS.REPORTS, report.$id);
+    
+    // Platform-specific success message
+    if (Platform.OS !== 'web') {
+      Alert.alert('Deleted', 'Report deleted successfully');
+    } else {
+      alert('Report deleted successfully');
+    }
+    
+    fetchReportsList(); // refresh
+  } catch (error) {
+    console.error('Delete failed:', error);
+    
+    // Platform-specific error message
+    if (Platform.OS !== 'web') {
+      Alert.alert('Error', 'Failed to delete report');
+    } else {
+      alert('Failed to delete report');
+    }
+  }
+};
 
 
   return (
