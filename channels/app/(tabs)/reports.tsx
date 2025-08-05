@@ -167,6 +167,10 @@ export default function Report() {
     }
   };
 
+  const cancelEdit = () => {
+      setEntries([]); // This clears the entries, which hides the edit form
+    };
+
   // Save edited report
   const saveReport = async () => {
     setLoading(prev => ({...prev, save: true}));
@@ -370,15 +374,26 @@ export default function Report() {
             </View>
           ))}
 
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
           <Button
             mode="contained"
             onPress={saveReport}
             loading={loading.save}
             disabled={loading.save}
-            style={{ marginTop: 20 }}
+            style={{ flex: 1, marginRight: 5 }}
           >
             Save Report
           </Button>
+          <Button
+            mode="outlined"
+            onPress={cancelEdit}
+            disabled={loading.save}
+            style={{ flex: 1, marginLeft: 5 }}
+          >
+            Cancel
+          </Button>
+        </View>
+
         </>
       )}
 
