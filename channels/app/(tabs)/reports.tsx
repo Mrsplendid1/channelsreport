@@ -299,16 +299,65 @@ export default function Report() {
     const htmlContent = `
       <html>
         <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { text-align: center; margin-bottom: 20px; }
-            .report-container { width: 100%; max-width: 800px; margin: 0 auto; }
-            .table { width: 100%; border-collapse: collapse; }
-            .table th, .table td { padding: 8px; text-align: left; border: 1px solid #ddd; }
-            .table th { background-color: #f2f2f2; font-weight: bold; }
-            .table tr:nth-child(even) { background-color: #f9f9f9; }
-            .total-row { font-weight: bold; background-color: #e6f7ff !important; }
-            .text-center { text-align: center !important; }
+            /* Print-specific styles */
+            @media print {
+              body { 
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 10px !important;
+                font-size: 14px !important;
+              }
+              .no-print { display: none !important; }
+            }
+            
+            /* General styles */
+            body { 
+              font-family: Arial, sans-serif; 
+              padding: 20px;
+              -webkit-text-size-adjust: 100%;
+            }
+            h1 { 
+              text-align: center; 
+              margin-bottom: 20px;
+              font-size: 1.5rem;
+            }
+            .report-container { 
+              width: 100%; 
+              max-width: 800px; 
+              margin: 0 auto;
+            }
+            .table { 
+              width: 100%; 
+              border-collapse: collapse;
+              font-size: 12px;
+            }
+            .table th, .table td { 
+              padding: 8px; 
+              text-align: left; 
+              border: 1px solid #ddd; 
+            }
+            .table th { 
+              background-color: #f2f2f2; 
+              font-weight: bold; 
+            }
+            .table tr:nth-child(even) { 
+              background-color: #f9f9f9; 
+            }
+            .total-row { 
+              font-weight: bold; 
+              background-color: #e6f7ff !important; 
+            }
+            .text-center { 
+              text-align: center !important; 
+            }
+            @page {
+              size: auto;
+              margin: 5mm;
+            }
           </style>
         </head>
         <body>
@@ -345,18 +394,66 @@ export default function Report() {
               </tbody>
             </table>
           </div>
+          
+          <div class="no-print" style="text-align: center; margin-top: 20px;">
+            <button onclick="window.print()" style="
+              padding: 10px 20px;
+              background: #007aff;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              font-size: 16px;
+              margin: 10px;
+            ">
+              Print Report
+            </button>
+            <button onclick="window.close()" style="
+              padding: 10px 20px;
+              background: #ff3b30;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              font-size: 16px;
+              margin: 10px;
+            ">
+              Close
+            </button>
+          </div>
+          
+          <script>
+            // Auto-print on mobile browsers
+            if(/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+              setTimeout(() => {
+                window.print();
+                // Close after printing on iOS
+                setTimeout(() => window.close(), 1000);
+              }, 300);
+            }
+          </script>
         </body>
       </html>
     `;
 
-    const { uri } = await Print.printToFileAsync({
-      html: htmlContent,
-    });
-
-    await Sharing.shareAsync(uri);
+    if (Platform.OS === 'web') {
+      // Web-specific handling
+      const printWindow = window.open('', '_blank');
+      printWindow?.document.write(htmlContent);
+      printWindow?.document.close();
+      
+      // Focus the window for iOS
+      setTimeout(() => {
+        printWindow?.focus();
+      }, 500);
+    } else {
+      // Native app handling
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+      });
+      await Sharing.shareAsync(uri);
+    }
   } catch (err) {
-    console.error('PDF generation error:', err);
-    Alert.alert('Error', 'Failed to generate or share PDF');
+    console.error('Print error:', err);
+    Alert.alert('Error', 'Failed to generate print preview');
   }
 };
 
