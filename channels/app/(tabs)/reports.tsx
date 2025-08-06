@@ -24,6 +24,7 @@ interface ReportDocument {
   $id: string;
   date: string;
   entries: string[]; // JSON strings of ReportEntry
+  $updatedAt: string;
 }
 
 export default function Report() {
@@ -54,7 +55,8 @@ export default function Report() {
         [
           Query.orderDesc('date'),
           Query.limit(pagination.limit),
-          Query.offset(offset)
+          Query.offset(offset),
+          Query.select(['$id', 'date', 'entries', '$updatedAt'])
         ]
       );
       
@@ -546,6 +548,17 @@ const executeDelete = async (report: ReportDocument) => {
         {expandedReport === report.$id && (
           <View style={{ padding: 10, backgroundColor: COLORS.lightGray }}>
             {renderReportEntries(report)}
+
+            {/* Last edited text using $updatedAt */}
+            <Text style={{ 
+              textAlign: 'right', 
+              fontSize: 12,
+              color: COLORS.gray,
+              marginBottom: 10,
+              fontStyle: 'italic'
+            }}>
+              Last updated: {new Date(report.$updatedAt).toLocaleString()}
+            </Text>
 
             {/* Buttons */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 15 }}>
