@@ -473,24 +473,34 @@ const executeDelete = async (report: ReportDocument) => {
         <>
           <Text style={STYLES.sectionTitle}>Editing: {date.toDateString()}</Text>
           {entries.map((entry, idx) => (
-            <View key={entry.staffId} style={STYLES.staffCard}>
-              <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>{entry.staffName}</Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                {(['app', 'ussd', 'card'] as const).map((field) => (
-                  <View key={field} style={{ flex: 1, marginHorizontal: 5 }}>
-                    <Text>{field.toUpperCase()}</Text>
-                    <TextInput
-                      mode="outlined"
-                      keyboardType="number-pad"
-                      value={entry[field].toString()}
-                      onChangeText={(val) => updateEntry(idx, field, val)}
-                      style={{ backgroundColor: 'white' }}
-                    />
-                  </View>
-                ))}
-              </View>
+            <View key={entry.staffId} style={[STYLES.staffCard, { padding: 10 }]}>
+            <Text style={{ fontWeight: 'bold', marginBottom: 8 }}>{entry.staffName}</Text>
+            
+            <View style={{ 
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              gap: 8
+            }}>
+              {(['app', 'ussd', 'card'] as const).map((field) => (
+                <View key={field} style={{ minWidth: '30%' }}>
+                  <Text style={{ fontSize: 12 }}>{field.toUpperCase()}</Text>
+                  <TextInput
+                    mode="outlined"
+                    keyboardType="number-pad"
+                    value={entry[field].toString()}
+                    onChangeText={(val) => updateEntry(idx, field, val)}
+                    style={{ 
+                      backgroundColor: 'white',
+                      height: 40
+                    }}
+                    dense
+                  />
+                </View>
+              ))}
             </View>
-          ))}
+          </View>
+        ))}
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
           <Button
